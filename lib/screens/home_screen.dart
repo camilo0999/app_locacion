@@ -12,16 +12,16 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late Future<List<Map<String, dynamic>>> _futureRutas;
+  Future<List<Map<String, dynamic>>>? _futureRutas;
   final _storage = const FlutterSecureStorage();
 
   @override
   void initState() {
     super.initState();
-    _checkAuthAndFetchRutas();
+    _initializeFutureRutas();
   }
 
-  Future<void> _checkAuthAndFetchRutas() async {
+  Future<void> _initializeFutureRutas() async {
     try {
       final token = await _storage.read(key: 'auth_token');
       if (token == null) {
@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     } catch (e) {
+      print('Error al inicializar rutas: $e');
       if (mounted) {
         context.go('/');
       }
@@ -43,12 +44,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _fetchRutas() async {
-    final token = await _storage.read(key: 'auth_token');
-
-    if (token == null) {
-      throw Exception('No se encontró el token de autenticación.');
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token == null) {
+        throw Exception('No se encontró el token de autenticación.');
+      }
+      final rutas = await RutasApi.listRutas(token);
+      print('Rutas obtenidas: $rutas');
+      return rutas;
+    } catch (e) {
+      print('Error al obtener rutas: $e');
+      rethrow;
     }
-    return RutasApi.listRutas(token);
   }
 
   Future<void> _logout() async {

@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:go_router/go_router.dart';
 import '../api/rutas_api.dart';
 
 class IdRutaScreen extends StatefulWidget {
@@ -144,6 +145,10 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/home'),
+        ),
         title: Text(
           rutaData?['nombre'] ?? 'Detalles de la Ruta',
           style: const TextStyle(fontWeight: FontWeight.w600),
@@ -152,6 +157,25 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
         elevation: 0,
         backgroundColor: Colors.white,
         foregroundColor: Colors.teal[700],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await _storage.delete(key: 'auth_token');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Sesión cerrada'),
+                    backgroundColor: Colors.teal,
+                  ),
+                );
+                // ignore: use_build_context_synchronously
+                context.go('/');
+              }
+            },
+            tooltip: 'Cerrar sesión',
+          ),
+        ],
       ),
       body: isLoading
           ? Center(
@@ -186,15 +210,6 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        _buildInfoRow(
-                          'Creado por:',
-                          rutaData!['creado_por'] ?? 'Desconocido',
-                        ),
-                        const SizedBox(height: 8),
-                        _buildInfoRow(
-                          'Fecha creación:',
-                          _formatFecha(rutaData!['fecha_creacion']),
-                        ),
                       ],
                     ),
                   ),
@@ -216,6 +231,36 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
                         },
                         markers: _markers,
                         polylines: _polylines,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          // Aquí irá la lógica para ver la ubicación del camión
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Cargando ubicación del camión...'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.local_shipping),
+                        label: const Text(
+                          'Ver al camión',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal[700],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
                       ),
                     ),
                   ),
