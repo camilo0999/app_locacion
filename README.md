@@ -59,7 +59,17 @@ Funciones principales:
 
 ## 📷 Vista Previa de la App
 
-*(Aquí puedes agregar capturas de pantalla o GIFs de la aplicación en acción, mostrando el mapa, el rastreo en tiempo real y la navegación entre pantallas)*
+<p align="center">
+  <img src="https://github.com/camilo0999/app_locacion/blob/main/imagen1.jpeg" alt="Login" width="250"/>
+  <img src="https://github.com/camilo0999/app_locacion/blob/main/imagen2.jpeg" alt="Registro" width="250"/>
+</p>
+
+<p align="center">
+  <img src="https://github.com/camilo0999/app_locacion/blob/main/imagen3.jpeg" alt="Home" width="250"/>
+  <img src="https://github.com/camilo0999/app_locacion/blob/main/imagen4.jpeg" alt="Ruta detalles" width="250"/>
+</p>
+
+
 
 ---
 
