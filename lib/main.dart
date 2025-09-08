@@ -1,3 +1,4 @@
+import 'package:app_locacion/screens/id_ruta_sreen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -5,10 +6,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:app_locacion/screens/login_screen.dart';
 import 'package:app_locacion/screens/register_screen.dart';
 import 'package:app_locacion/screens/home_screen.dart';
-import 'package:app_locacion/screens/id_ruta_sreen.dart';
+import 'package:google_directions_api/google_directions_api.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  DirectionsService.init('AIzaSyCyPhpK7EfS7G5FCCKaTl7G0tw8STV6vZk');
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -21,17 +25,14 @@ void main() {
 final GoRouter _router = GoRouter(
   initialLocation: '/',
   redirect: (context, state) async {
-    // Obtener el token almacenado
     final token = await const FlutterSecureStorage().read(key: 'auth_token');
     final isLoginRoute = state.matchedLocation == '/';
     final isRegisterRoute = state.matchedLocation == '/register';
 
-    // Si no hay token y no estamos en login o registro, redirigir a login
     if (token == null && !isLoginRoute && !isRegisterRoute) {
       return '/';
     }
 
-    // Si hay token y estamos en login, redirigir a home
     if (token != null && isLoginRoute) {
       return '/home';
     }

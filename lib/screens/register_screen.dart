@@ -4,6 +4,7 @@ import 'package:app_locacion/widgets/custom_input.dart';
 import 'package:app_locacion/widgets/custom_button.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:go_router/go_router.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -58,8 +59,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         );
         if (response['success']) {
-          // ignore: use_build_context_synchronously
-          Navigator.pop(context);
+          context.go('/login');
         }
       } catch (e) {
         // ignore: use_build_context_synchronously

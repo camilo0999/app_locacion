@@ -40,6 +40,9 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   google_maps_flutter: ^2.12.3
   flutter_polyline_points: ^2.0.0
+  google_directions_api: ^0.10.0
+  polyline_codec: ^0.1.6
+  provider: ^6.0.5
 
 dev_dependencies:
   flutter_test:
