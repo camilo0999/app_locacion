@@ -1,16 +1,86 @@
-# app_locacion
+# 🚍 Proyecto
 
-A new Flutter project.
+**Visualizador del trayecto del camion de la basura** es una aplicación móvil desarrollada con **Flutter** que permite **gestionar y visualizar rutas de vehículos en tiempo real**.
+Los usuarios pueden rastrear los puntos de partida y llegada de un vehículo, con actualizaciones en vivo gracias a la integración con un **servidor backend robusto**.
 
-## Getting Started
+---
 
-This project is a starting point for a Flutter application.
+## 👥 Integrantes del Grupo
 
-A few resources to get you started if this is your first Flutter project:
+* Brayan Riascos Murillo
+* Jose Alejandro Velez
+* Brayan Caicedo Angulo
+* Juan Camilo Ibarguen Grueso
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+---
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 📌 Contextualización del Proyecto
+
+El objetivo principal de esta aplicación es ofrecer una **solución eficiente para el seguimiento de rutas del camion de la basura**.
+
+🔹 Los usuarios podrán:
+
+* Visualizar información detallada de cada ruta.
+* Consultar el **punto de partida** y el **punto final** en un mapa interactivo.
+* Hacer un **seguimiento en vivo** de los vehículos.
+
+La aplicación asegura que solo los **usuarios autorizados** tengan acceso a las rutas mediante un sistema de **autenticación segura**.
+
+---
+
+## 🛠️ Tecnologías y APIs Clave
+
+### 📱 **Frontend** (Flutter)
+
+* **Flutter**: Framework principal, una sola base de código para Android, iOS y Web.
+* **go\_router**: Navegación declarativa y profunda.
+* **flutter\_secure\_storage**: Almacenamiento seguro de credenciales y tokens.
+* **Google Maps SDK**: Visualización de mapas, creación de marcadores (Markers) y polilíneas (Polylines).
+
+🔑 **APIs de Google Cloud necesarias:**
+
+* Maps JavaScript API *(para la versión web)*
+* Maps SDK for Android *(para la versión Android)*
+* Maps SDK for iOS *(para la versión iOS, si aplica)*
+
+---
+
+### 🌐 **Backend**
+
+El servidor está desplegado en **Render** y disponible en:
+👉 [https://server-location-1r1p.onrender.com](https://server-location-1r1p.onrender.com)
+
+Funciones principales:
+
+* **Peticiones HTTP** → Procesa solicitudes de autenticación y datos de rutas.
+* **WebSockets (WS)** → Envía actualizaciones en tiempo real de la ubicación de los vehículos.
+
+---
+
+## 📷 Vista Previa de la App
+
+<p align="center">
+  <img src="https://github.com/camilo0999/app_locacion/blob/main/imagen1.jpeg" alt="Login" width="250"/>
+  <img src="https://github.com/camilo0999/app_locacion/blob/main/imagen2.jpeg" alt="Registro" width="250"/>
+</p>
+
+<p align="center">
+  <img src="https://github.com/camilo0999/app_locacion/blob/main/imagen3.jpeg" alt="Home" width="250"/>
+  <img src="https://github.com/camilo0999/app_locacion/blob/main/imagen4.jpeg" alt="Ruta detalles" width="250"/>
+</p>
+
+
+
+---
+
+## 🚀 Futuras Mejoras
+
+* Implementar notificaciones push para alertas de llegada y salida.
+* Integrar estadísticas de recorridos y tiempos estimados.
+* Optimizar la versión web para mayor compatibilidad.
+
+---
+
+✨ **Rastreador de Rutas**: haciendo el transporte más eficiente, seguro y conectado en tiempo real.
+
+---
