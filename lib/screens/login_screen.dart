@@ -40,6 +40,22 @@ class _LoginScreenState extends State<LoginScreen> {
         if (response['success']) {
           // Primero guardamos el token
           await _storage.write(key: 'auth_token', value: response['token']);
+          await _storage.write(
+            key: 'user_id',
+            value: response['user']['uid'].toString(),
+          );
+          await _storage.write(
+            key: 'user_rol',
+            value: response['user']['rol'].toString(),
+          );
+          await _storage.write(
+            key: 'user_name',
+            value: response['user']['nombre'].toString(),
+          );
+          await _storage.write(
+            key: 'user_email',
+            value: response['user']['email'].toString(),
+          );
 
           // Verificamos que el token se haya guardado correctamente
           final savedToken = await _storage.read(key: 'auth_token');

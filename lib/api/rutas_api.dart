@@ -91,4 +91,43 @@ class RutasApi {
       throw Exception('Error de red: no se pudo conectar con el servidor');
     }
   }
+
+  static Future<List<Map<String, dynamic>>> listRutasAsignadas(
+    String authToken,
+    String id,
+  ) async {
+    final url = Uri.parse('$baseUrl/rutas-asignadas/$id');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $authToken',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        // Decodifica la respuesta JSON y la convierte a una lista de mapas.
+        final List<dynamic> jsonList = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(jsonList);
+      } else if (response.statusCode == 404) {
+        throw Exception(
+          'No se encontraron rutas asignadas para este conductor.',
+        );
+      } else {
+        // Si el servidor retorna un error, lanza una excepción.
+        final errorBody = jsonDecode(response.body);
+        throw Exception(
+          errorBody['error'] ??
+              'Error desconocido al obtener las rutas del conductor',
+        );
+      }
+    } catch (e) {
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('Error de red: no se pudo conectar con el servidor.');
+    }
+  }
 }

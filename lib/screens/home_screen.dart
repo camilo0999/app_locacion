@@ -14,6 +14,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Future<List<Map<String, dynamic>>>? _futureRutas;
   final _storage = const FlutterSecureStorage();
+  String? _userRol;
+  String? _token;
+  String? _userId;
 
   @override
   void initState() {
@@ -24,15 +27,22 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _initializeFutureRutas() async {
     try {
       final token = await _storage.read(key: 'auth_token');
+      final rol = await _storage.read(key: 'user_rol');
+      final id = await _storage.read(key: 'user_id');
+
       if (token == null) {
         if (mounted) {
           context.go('/');
         }
         return;
       }
+
       if (mounted) {
         setState(() {
-          _futureRutas = _fetchRutas();
+          _userRol = rol;
+          _token = token;
+          _userId = id;
+          _futureRutas = _fetchRutas(token, rol, id);
         });
       }
     } catch (e) {
@@ -43,47 +53,54 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _fetchRutas() async {
+  Future<List<Map<String, dynamic>>> _fetchRutas(
+    String token,
+    String? rol,
+    String? id,
+  ) async {
     try {
-      final token = await _storage.read(key: 'auth_token');
-      if (token == null) {
-        throw Exception('No se encontró el token de autenticación.');
+      if (rol == 'conductor') {
+        if (id == null) {
+          throw Exception('ID de usuario no disponible');
+        }
+        final rutasAsignadas = await RutasApi.listRutasAsignadas(token, id);
+        print('Rutas de conductor obtenidas: $rutasAsignadas');
+        return rutasAsignadas;
+      } else {
+        final rutas = await RutasApi.listRutas(token);
+        return rutas;
       }
-      final rutas = await RutasApi.listRutas(token);
-      print('Rutas obtenidas: $rutas');
-      return rutas;
     } catch (e) {
       print('Error al obtener rutas: $e');
       rethrow;
     }
   }
 
+  Future<void> _refreshRutas() async {
+    if (_token != null && _userRol != null) {
+      setState(() {
+        _futureRutas = _fetchRutas(_token!, _userRol, _userId);
+      });
+    }
+  }
+
   Future<void> _logout() async {
     try {
-      // Limpiar todas las claves del almacenamiento seguro
       await _storage.deleteAll();
 
-      // Forzar la limpieza del token específicamente
-      await _storage.delete(key: 'auth_token');
-
-      // Verificar que el token se haya eliminado
+      // Verificar que el token se eliminó correctamente
       final token = await _storage.read(key: 'auth_token');
       if (token != null) {
         throw Exception('No se pudo eliminar el token');
       }
 
       if (mounted) {
-        // Mostrar confirmación de cierre de sesión
-        // ignore: use_build_context_synchronously
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Sesión cerrada exitosamente'),
             backgroundColor: Colors.green,
           ),
         );
-
-        // Navegar a la pantalla de inicio de sesión y limpiar la pila
-        // ignore: use_build_context_synchronously
         context.go('/');
       }
     } catch (e) {
@@ -100,12 +117,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    String appBarTitle = _userRol == 'conductor'
+        ? 'Mis Rutas Asignadas'
+        : 'Rutas Disponibles';
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text(
-          'Rutas Disponibles',
-          style: TextStyle(fontWeight: FontWeight.w600),
+        title: Text(
+          appBarTitle,
+          style: const TextStyle(fontWeight: FontWeight.w600),
         ),
         centerTitle: false,
         elevation: 0,
@@ -160,17 +181,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '${snapshot.error}',
+                      'Por favor, intenta nuevamente',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          _futureRutas = _fetchRutas();
-                        });
-                      },
+                      onPressed: _refreshRutas,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.teal[700],
                         shape: RoundedRectangleBorder(
@@ -191,6 +208,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             );
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            final emptyMessage = _userRol == 'conductor'
+                ? 'No tienes rutas asignadas en este momento.'
+                : 'No hay rutas disponibles';
+            final emptySubtitle = _userRol == 'conductor'
+                ? 'Contacta al administrador para más información.'
+                : 'Vuelve más tarde para descubrir nuevas rutas';
+
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -202,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'No hay rutas disponibles',
+                    emptyMessage,
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w500,
@@ -211,19 +235,29 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Vuelve más tarde para descubrir nuevas rutas',
+                    emptySubtitle,
                     style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _refreshRutas,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal[700],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Actualizar',
+                      style: TextStyle(color: Colors.white),
+                    ),
                   ),
                 ],
               ),
             );
           } else {
             return RefreshIndicator(
-              onRefresh: () async {
-                setState(() {
-                  _futureRutas = _fetchRutas();
-                });
-              },
+              onRefresh: _refreshRutas,
               color: Colors.teal[700],
               child: ListView.builder(
                 padding: const EdgeInsets.all(16.0),
@@ -249,7 +283,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         borderRadius: BorderRadius.circular(16.0),
                         onTap: () {
                           final rutaId = route['id']?.toString();
-
                           if (rutaId != null && rutaId.isNotEmpty) {
                             context.go('/rutaDetails/$rutaId');
                           } else {
