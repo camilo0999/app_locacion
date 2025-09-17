@@ -19,6 +19,7 @@ class IdRutaScreen extends StatefulWidget {
 class _IdRutaScreenState extends State<IdRutaScreen> {
   final _storage = const FlutterSecureStorage();
   late final RutaMapState _rutaMapState;
+  String? _userRol;
 
   @override
   void initState() {
@@ -37,13 +38,77 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
         );
       },
     );
+    _loadUserRole();
     _rutaMapState.loadRutaDetails();
+  }
+
+  Future<void> _loadUserRole() async {
+    final rol = await _storage.read(key: 'user_rol');
+    if (mounted) {
+      setState(() {
+        _userRol = rol;
+      });
+    }
   }
 
   @override
   void dispose() {
     _rutaMapState.dispose();
     super.dispose();
+  }
+
+  void _onPersonRoleButtonPressed() {
+    // Logic for 'Ver ubicación del camión'
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            SizedBox(width: 16),
+            Text('Localizando camión...'),
+          ],
+        ),
+        backgroundColor: Colors.teal[700],
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+    // You can add your specific localization logic here
+  }
+
+  void _onConductorRoleButtonPressed() {
+    // Logic for 'Iniciar transmisión'
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            SizedBox(width: 16),
+            Text('Iniciando transmisión...'),
+          ],
+        ),
+        backgroundColor: Colors.teal[700],
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+    // You can add your specific transmission logic here
   }
 
   @override
@@ -102,7 +167,7 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
         ),
         body: Consumer<RutaMapState>(
           builder: (context, state, child) {
-            if (state.isLoading) {
+            if (state.isLoading || _userRol == null) {
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -292,41 +357,20 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
                       width: double.infinity,
                       height: 56,
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Row(
-                                children: [
-                                  SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 16),
-                                  Text('Localizando camión...'),
-                                ],
+                        onPressed: _userRol == 'conductor'
+                            ? _onConductorRoleButtonPressed
+                            : _onPersonRoleButtonPressed,
+                        icon: _userRol == 'conductor'
+                            ? const Icon(Icons.gps_fixed_rounded, size: 28)
+                            : const Icon(
+                                Icons.local_shipping_rounded,
+                                size: 28,
                               ),
-                              backgroundColor: Colors.teal[700],
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        },
-                        icon: const Icon(
-                          Icons.local_shipping_rounded,
-                          size: 28,
-                        ),
-                        label: const Text(
-                          'Ver ubicación del camión',
-                          style: TextStyle(
+                        label: Text(
+                          _userRol == 'conductor'
+                              ? 'Iniciar transmisión'
+                              : 'Ver ubicación del camión',
+                          style: const TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w600,
                           ),

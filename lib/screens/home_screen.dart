@@ -63,9 +63,23 @@ class _HomeScreenState extends State<HomeScreen> {
         if (id == null) {
           throw Exception('ID de usuario no disponible');
         }
-        final rutasAsignadas = await RutasApi.listRutasAsignadas(token, id);
-        print('Rutas de conductor obtenidas: $rutasAsignadas');
-        return rutasAsignadas;
+        final List<Map<String, dynamic>> rutasAsignadas =
+            await RutasApi.listRutasAsignadas(token, id);
+
+        // Map the conductor's data to match the structure of regular routes
+        final List<Map<String, dynamic>> transformedRutas = rutasAsignadas.map((
+          rutaAsignada,
+        ) {
+          return {
+            'id': rutaAsignada['rutaId'], // Use 'rutaId' for navigation
+            'nombre':
+                'Ruta Asignada - ${rutaAsignada['dia_semana'] ?? 'Día Desconocido'}',
+            'descripcion':
+                'Asignada para el día ${rutaAsignada['dia_semana'] ?? 'sin especificar'}',
+          };
+        }).toList();
+
+        return transformedRutas;
       } else {
         final rutas = await RutasApi.listRutas(token);
         return rutas;
