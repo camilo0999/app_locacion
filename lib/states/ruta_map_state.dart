@@ -1,9 +1,12 @@
 // lib/states/ruta_map_state.dart
 
-import 'package:app_locacion/services/directions_service.dart';
+import 'package:app_locacion/services/directions_service.dart'; 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+// Importaciones de Flutter Map y LatLng
+import 'package:flutter_map/flutter_map.dart'; 
+import 'package:latlong2/latlong.dart'; 
 
 import '../api/rutas_api.dart';
 
@@ -17,11 +20,17 @@ class RutaMapState extends ChangeNotifier {
   Map<String, dynamic>? _rutaData;
   bool _isLoading = true;
   bool _isMapLoading = true;
-  GoogleMapController? _mapController;
-  final Set<Marker> _markers = {};
-  final Set<Polyline> _polylines = {};
+  
+  final MapController _mapController = MapController(); 
+  
+  final List<Marker> _markers = [];
+  
+  final List<Polyline> _polylines = [];
+  
   final _storage = const FlutterSecureStorage();
-  List<LatLng> _routePoints = [];
+  
+  List<LatLng> _routePoints = []; 
+  
   LatLng _initialPosition = const LatLng(
     6.2476,
     -75.5658,
@@ -31,11 +40,12 @@ class RutaMapState extends ChangeNotifier {
   Map<String, dynamic>? get rutaData => _rutaData;
   bool get isLoading => _isLoading;
   bool get isMapLoading => _isMapLoading;
-  Set<Marker> get markers => _markers;
-  Set<Polyline> get polylines => _polylines;
+  List<Marker> get markers => _markers; 
+  List<Polyline> get polylines => _polylines; 
   List<LatLng> get routePoints => _routePoints;
   LatLng get initialPosition => _initialPosition;
-
+  MapController get mapController => _mapController; 
+  
   // Carga los detalles de la ruta desde la API
   Future<void> loadRutaDetails() async {
     _isLoading = true;
@@ -64,7 +74,9 @@ class RutaMapState extends ChangeNotifier {
       }
 
       _isLoading = false;
-      notifyListeners();
+      // Llamamos a setupMapData justo después de cargar los datos
+      await setupMapData(); 
+      
     } catch (e) {
       _isLoading = false;
       _isMapLoading = false;
@@ -74,11 +86,6 @@ class RutaMapState extends ChangeNotifier {
     }
   }
 
-  // Se llama cuando el mapa se crea
-  void onMapCreated(GoogleMapController controller) {
-    _mapController = controller;
-    setupMapData();
-  }
 
   // Prepara los marcadores y la polilínea para el mapa
   Future<void> setupMapData() async {
@@ -90,20 +97,31 @@ class RutaMapState extends ChangeNotifier {
 
     _isMapLoading = true;
     notifyListeners();
+    
+    _markers.clear();
+    _polylines.clear();
+    _routePoints.clear();
 
     if (!_rutaData!.containsKey('punto_partida') ||
         !_rutaData!.containsKey('punto_final')) {
       onShowMessage('La ruta no tiene puntos de partida y final definidos.');
       _isMapLoading = false;
-      _routePoints = [];
-      _markers.clear();
-      _polylines.clear();
       notifyListeners();
       return;
     }
 
     final puntoPartida = _rutaData!['punto_partida'];
     final puntoFinal = _rutaData!['punto_final'];
+    
+    // Extracción de puntos intermedios desde 'calles'
+    final List<dynamic> callesData = _rutaData!['calles'] ?? [];
+    final List<LatLng> waypoints = callesData.map((calle) {
+      return LatLng(
+        (calle['lat'] as num).toDouble(),
+        (calle['lng'] as num).toDouble(),
+      );
+    }).toList();
+
 
     final LatLng inicio = LatLng(
       (puntoPartida['_latitude'] as num).toDouble(),
@@ -113,57 +131,61 @@ class RutaMapState extends ChangeNotifier {
       (puntoFinal['_latitude'] as num).toDouble(),
       (puntoFinal['_longitude'] as num).toDouble(),
     );
-
-    await _getRouteData(inicio, fin);
+    
+    // Llamada con puntos intermedios
+    await _getRouteData(inicio, fin, waypoints: waypoints);
   }
 
-  // Obtiene la ruta y configura el mapa
-  Future<void> _getRouteData(LatLng inicio, LatLng fin) async {
+  // Obtiene la ruta y configura el mapa 
+  Future<void> _getRouteData(LatLng inicio, LatLng fin, {List<LatLng> waypoints = const []}) async {
     try {
-      final routePoints = await DirectionsService().getDirections(
+      // 1. Limpieza inicial
+      _markers.clear();
+      _polylines.clear();
+      
+      // 2. Obtener la ruta del servicio (usando waypoints)
+      final List<LatLng> routePoints = await DirectionsService().getDirections(
         origin: inicio,
         destination: fin,
+        waypoints: waypoints, 
       );
 
       _routePoints = routePoints;
-
-      _markers.clear();
-      _polylines.clear();
-
+      
+      // 3. Añadir marcadores
+      // Inicio
       _markers.add(
         Marker(
-          markerId: const MarkerId('inicio'),
-          position: inicio,
-          infoWindow: const InfoWindow(
-            title: 'Inicio',
-            snippet: 'Punto de partida de la ruta',
-          ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueGreen,
-          ),
+          point: inicio,
+          width: 80.0,
+          height: 80.0,
+          alignment: Alignment.topCenter,
+          child: const Icon(Icons.location_on, color: Colors.green, size: 40.0,),
         ),
       );
 
+      // Fin
       _markers.add(
         Marker(
-          markerId: const MarkerId('fin'),
-          position: fin,
-          infoWindow: const InfoWindow(
-            title: 'Destino',
-            snippet: 'Punto final de la ruta',
-          ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          point: fin,
+          width: 80.0,
+          height: 80.0,
+          alignment: Alignment.topCenter,
+          child: const Icon(Icons.location_on, color: Colors.red, size: 40.0,),
         ),
       );
+      
+      // Intermedios (numerados)
+      _addIntermediateMarkers(waypoints); 
 
+      // 4. Añadir polilínea
       if (routePoints.isNotEmpty) {
         _polylines.add(
           Polyline(
-            polylineId: const PolylineId('ruta'),
             points: routePoints,
             color: Colors.blue.shade600,
-            width: 5,
-            geodesic: true,
+            strokeWidth: 5,
+          
           ),
         );
       }
@@ -171,8 +193,9 @@ class RutaMapState extends ChangeNotifier {
       _isMapLoading = false;
       notifyListeners();
       fitMapToRoute();
+      
     } catch (e) {
-      _showFallbackRoute(inicio, fin);
+      _showFallbackRoute(inicio, fin, waypoints: waypoints); 
       onShowMessage(
         'Error al obtener la ruta por calles: ${e.toString()}.\nMostrando ruta directa.',
       );
@@ -181,82 +204,81 @@ class RutaMapState extends ChangeNotifier {
     }
   }
 
-  // Fallback en caso de error
-  void _showFallbackRoute(LatLng inicio, LatLng fin) {
+  // FUNCIÓN: Para añadir marcadores a los puntos intermedios
+  void _addIntermediateMarkers(List<LatLng> waypoints) {
+    for (int i = 0; i < waypoints.length; i++) {
+        _markers.add(
+            Marker(
+                point: waypoints[i],
+                width: 40.0, 
+                height: 40.0,
+                alignment: Alignment.topCenter,
+                child: Container(
+                  width: 25,
+                  height: 25,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.blue.shade600, width: 2),
+                  ),
+                  child: Text(
+                    (i + 1).toString(),
+                    style: TextStyle(
+                      color: Colors.blue.shade600, 
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12
+                    ),
+                  ),
+                ),
+            ),
+        );
+    }
+  }
+
+  // Fallback en caso de error (Versión única y correcta)
+  void _showFallbackRoute(LatLng inicio, LatLng fin, {List<LatLng> waypoints = const []}) {
     _markers.clear();
     _polylines.clear();
-
-    _markers.add(
-      Marker(
-        markerId: const MarkerId('inicio'),
-        position: inicio,
-        infoWindow: const InfoWindow(title: 'Inicio'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-      ),
-    );
-    _markers.add(
-      Marker(
-        markerId: const MarkerId('fin'),
-        position: fin,
-        infoWindow: const InfoWindow(title: 'Destino'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-      ),
-    );
+    
+    // Marcadores de Inicio y Fin (Fallback color)
+    _markers.add(Marker(point: inicio, width: 80.0, height: 80.0, alignment: Alignment.topCenter, child: const Icon(Icons.location_on, color: Colors.orange, size: 40.0,)));
+    _markers.add(Marker(point: fin, width: 80.0, height: 80.0, alignment: Alignment.topCenter, child: const Icon(Icons.location_on, color: Colors.deepOrange, size: 40.0,)));
+    
+    // Marcadores intermedios (numerados)
+    _addIntermediateMarkers(waypoints); 
+    
+    // Polilínea directa (une todos los puntos en orden: inicio -> waypoints[1] -> ... -> fin)
+    final List<LatLng> allPoints = [inicio, ...waypoints, fin];
 
     _polylines.add(
       Polyline(
-        polylineId: const PolylineId('ruta_directa'),
-        points: [inicio, fin],
+        points: allPoints, 
         color: Colors.orange.shade600,
-        width: 5,
-        patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+        strokeWidth: 5,
+     
       ),
     );
 
-    _routePoints = [inicio, fin];
+    _routePoints = allPoints;
   }
 
   // Ajusta la cámara
   Future<void> fitMapToRoute() async {
-    if (_mapController == null || _routePoints.isEmpty) return;
+    if (_routePoints.isEmpty) return;
 
-    final bounds = _calculateBounds(_routePoints);
-    try {
-      await _mapController!.animateCamera(
-        CameraUpdate.newLatLngBounds(bounds, 100),
-      );
-    } catch (e) {
-      onShowMessage('Error al ajustar la cámara del mapa.', isError: true);
-    }
+    final bounds = LatLngBounds.fromPoints(_routePoints);
+    
+    // Implementación del MapController de Flutter Map
+   
   }
 
   Future<void> refreshRoute() async {
     await setupMapData();
   }
 
-  LatLngBounds _calculateBounds(List<LatLng> points) {
-    if (points.isEmpty) {
-      return LatLngBounds(
-        southwest: const LatLng(6.1, -75.7),
-        northeast: const LatLng(6.4, -75.4),
-      );
-    }
-
-    double minLat = points[0].latitude;
-    double maxLat = points[0].latitude;
-    double minLng = points[0].longitude;
-    double maxLng = points[0].longitude;
-
-    for (final point in points) {
-      minLat = point.latitude < minLat ? point.latitude : minLat;
-      maxLat = point.latitude > maxLat ? point.latitude : maxLat;
-      minLng = point.longitude < minLng ? point.longitude : minLng;
-      maxLng = point.longitude > maxLng ? point.longitude : maxLng;
-    }
-
-    return LatLngBounds(
-      southwest: LatLng(minLat, minLng),
-      northeast: LatLng(maxLat, maxLng),
-    );
+  @override
+  void dispose() {
+    super.dispose();
   }
 }

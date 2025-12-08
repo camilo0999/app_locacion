@@ -6,12 +6,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:app_locacion/screens/login_screen.dart';
 import 'package:app_locacion/screens/register_screen.dart';
 import 'package:app_locacion/screens/home_screen.dart';
-import 'package:google_directions_api/google_directions_api.dart';
+// ELIMINADA: import 'package:google_directions_api/google_directions_api.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  DirectionsService.init('AIzaSyCyPhpK7EfS7G5FCCKaTl7G0tw8STV6vZk');
+  // ELIMINADA: DirectionsService.init('AIzaSyCyPhpK7EfS7G5FCCKaTl7G0tw8STV6vZk');
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(

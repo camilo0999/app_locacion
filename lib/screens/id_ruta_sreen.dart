@@ -2,9 +2,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+// NUEVAS IMPORTACIONES
+import 'package:flutter_map/flutter_map.dart'; 
+import 'package:latlong2/latlong.dart';
+// FIN NUEVAS IMPORTACIONES
+
 import '../states/ruta_map_state.dart';
 
 class IdRutaScreen extends StatefulWidget {
@@ -211,34 +216,35 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
                     margin: const EdgeInsets.all(16.0),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          spreadRadius: 0,
-                          blurRadius: 20,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
+                     
                     ),
                     child: Stack(
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(20),
-                          child: GoogleMap(
-                            initialCameraPosition: CameraPosition(
-                              target: state.initialPosition,
-                              zoom: state.isMapLoading ? 10.0 : 14.0,
+                          child: FlutterMap(
+                            // Usamos el controlador del State
+                            mapController: state.mapController, 
+                            options: MapOptions(
+                              // Usamos el LatLng de latlong2
+                              initialCenter: state.initialPosition,
+                              initialZoom: state.isMapLoading ? 10.0 : 14.0,
                             ),
-                            onMapCreated: (controller) {
-                              state.onMapCreated(controller);
-                            },
-                            markers: state.markers,
-                            polylines: state.polylines,
-                            myLocationEnabled: true,
-                            myLocationButtonEnabled: false,
-                            zoomControlsEnabled: true,
-                            mapToolbarEnabled: false,
-                            compassEnabled: true,
+                            children: [
+                              // 1. Capa de Tiles (OpenStreetMap) - El mapa base
+                              TileLayer(
+                                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName: 'com.example.app_locacion', 
+                              ),
+                              // 2. Capa de Polilíneas
+                              PolylineLayer(
+                                polylines: state.polylines, 
+                              ),
+                              // 3. Capa de Marcadores
+                              MarkerLayer(
+                                markers: state.markers, 
+                              ),
+                            ],
                           ),
                         ),
                         if (state.isMapLoading)
