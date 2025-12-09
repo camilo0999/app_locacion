@@ -250,6 +250,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         onTap: () {
                           final rutaId = route['id']?.toString();
 
+                          // DEBUG: mostrar el contenido de la ruta y el id antes de navegar
+                          print('DEBUG: Ruta seleccionada: $route');
+                          print('DEBUG: Navegando a rutaDetails con id: $rutaId');
+
                           if (rutaId != null && rutaId.isNotEmpty) {
                             context.go('/rutaDetails/$rutaId');
                           } else {

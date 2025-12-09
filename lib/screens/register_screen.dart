@@ -4,7 +4,6 @@ import 'package:app_locacion/widgets/custom_input.dart';
 import 'package:app_locacion/widgets/custom_button.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:go_router/go_router.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});

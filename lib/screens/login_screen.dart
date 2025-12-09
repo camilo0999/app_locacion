@@ -40,6 +40,15 @@ class _LoginScreenState extends State<LoginScreen> {
         if (response['success']) {
           // Primero guardamos el token
           await _storage.write(key: 'auth_token', value: response['token']);
+          // Guardar el rol bajo la clave 'user_role' (consistente con lectura en IdRutaScreen)
+          final savedRole = response['user'] != null ? response['user']['rol'] : null;
+          if (savedRole != null) {
+            await _storage.write(key: 'user_role', value: savedRole);
+            // DEBUG: confirmar que se guardó correctamente
+            print('DEBUG: Rol guardado en storage: $savedRole');
+          } else {
+            print('DEBUG: No se encontró el rol en la respuesta del servidor');
+          }
 
           // Verificamos que el token se haya guardado correctamente
           final savedToken = await _storage.read(key: 'auth_token');

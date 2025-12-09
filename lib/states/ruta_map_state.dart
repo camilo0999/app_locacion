@@ -1,5 +1,7 @@
 // lib/states/ruta_map_state.dart
 
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:app_locacion/services/directions_service.dart'; 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -44,7 +46,24 @@ class RutaMapState extends ChangeNotifier {
   List<Polyline> get polylines => _polylines; 
   List<LatLng> get routePoints => _routePoints;
   LatLng get initialPosition => _initialPosition;
-  MapController get mapController => _mapController; 
+  MapController get mapController => _mapController;
+
+  /// Retorna lista de calles procesadas con nombre y coordinadas.
+  /// Estructura: List<{'nombre': String, 'lat': double, 'lng': double}>
+  List<Map<String, dynamic>> get calles {
+    if (_rutaData == null || !_rutaData!.containsKey('calles')) {
+      return [];
+    }
+
+    final List<dynamic> callesData = _rutaData!['calles'] ?? [];
+    return callesData.map((calle) {
+      return {
+        'nombre': calle['nombre'] ?? 'Calle sin nombre',
+        'lat': (calle['lat'] as num?)?.toDouble() ?? 0.0,
+        'lng': (calle['lng'] as num?)?.toDouble() ?? 0.0,
+      };
+    }).toList();
+  } 
   
   // Carga los detalles de la ruta desde la API
   Future<void> loadRutaDetails() async {
@@ -75,7 +94,15 @@ class RutaMapState extends ChangeNotifier {
 
       _isLoading = false;
       // Llamamos a setupMapData justo después de cargar los datos
-      await setupMapData(); 
+      await setupMapData();
+      
+      // Cargar la última ubicación del camión automáticamente
+      try {
+        await obtenerUltimaUbicacion();
+      } catch (e) {
+        print('⚠️ Advertencia: No se pudo cargar la última ubicación: $e');
+        // No interrumpimos el flujo si falla la última ubicación
+      }
       
     } catch (e) {
       _isLoading = false;
@@ -185,7 +212,6 @@ class RutaMapState extends ChangeNotifier {
             points: routePoints,
             color: Colors.blue.shade600,
             strokeWidth: 5,
-          
           ),
         );
       }
@@ -256,7 +282,6 @@ class RutaMapState extends ChangeNotifier {
         points: allPoints, 
         color: Colors.orange.shade600,
         strokeWidth: 5,
-     
       ),
     );
 
@@ -267,14 +292,322 @@ class RutaMapState extends ChangeNotifier {
   Future<void> fitMapToRoute() async {
     if (_routePoints.isEmpty) return;
 
-    final bounds = LatLngBounds.fromPoints(_routePoints);
-    
     // Implementación del MapController de Flutter Map
-   
   }
 
   Future<void> refreshRoute() async {
-    await setupMapData();
+    try {
+      _isMapLoading = true;
+      notifyListeners();
+
+      await setupMapData();
+      await obtenerUltimaUbicacion();
+
+      _isMapLoading = false;
+      notifyListeners();
+    } catch (e) {
+      _isMapLoading = false;
+      notifyListeners();
+      onShowMessage(
+        'Error al actualizar la ruta: ${e.toString()}',
+        isError: true,
+      );
+    }
+  }
+
+  /// Inicia la ruta cambiando su estado a 'en_curso'
+  Future<void> iniciarRuta() async {
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token == null) {
+        throw Exception('No se encontró el token de autenticación.');
+      }
+
+      if (_rutaData == null) {
+        throw Exception('Los datos de la ruta no están disponibles.');
+      }
+
+      // Extraer punto_partida y enviar al endpoint /iniciar para comenzar la transmisión
+      if (!_rutaData!.containsKey('punto_partida')) {
+        throw Exception('No se encontró el punto de partida de la ruta.');
+      }
+
+      final puntoPartida = _rutaData!['punto_partida'];
+      final latitude = (puntoPartida['_latitude'] as num).toDouble();
+      final longitude = (puntoPartida['_longitude'] as num).toDouble();
+
+      final resultado = await RutasApi.iniciarTransmision(token, rutaId, latitude, longitude);
+
+      // Si el servidor aceptó la operación, actualizar estado local si viene en la respuesta
+      try {
+        if (resultado.containsKey('estado')) {
+          _rutaData!['estado'] = resultado['estado'];
+        } else {
+          _rutaData!['estado'] = 'en_curso';
+        }
+      } catch (_) {
+        // ignorar si no se puede actualizar localmente
+      }
+      notifyListeners();
+
+      onShowMessage(
+        resultado['message'] ?? 'Ruta iniciada correctamente',
+        isError: false,
+      );
+    } catch (e) {
+      onShowMessage(
+        'Error al iniciar la ruta: ${e.toString()}',
+        isError: true,
+      );
+    }
+  }
+
+  /// Actualiza la ubicación del conductor durante la transmisión
+  /// Envía la ubicación al servidor para registrar la posición del camión.
+  /// Si se pasan [latitude] y [longitude], se usan; si no, se usa `punto_partida` de la ruta.
+  Future<void> iniciarTransmision({double? latitude, double? longitude}) async {
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token == null) {
+        throw Exception('No se encontró el token de autenticación.');
+      }
+
+      double latFinal;
+      double lngFinal;
+
+      if (latitude != null && longitude != null) {
+        latFinal = latitude;
+        lngFinal = longitude;
+        print('🔁 Actualizando ubicación usando coordenadas pasadas: ($latFinal, $lngFinal)');
+      } else {
+        if (_rutaData == null || !_rutaData!.containsKey('punto_partida')) {
+          throw Exception('No se encontró el punto de partida de la ruta.');
+        }
+
+        final puntoPartida = _rutaData!['punto_partida'];
+        latFinal = (puntoPartida['_latitude'] as num).toDouble();
+        lngFinal = (puntoPartida['_longitude'] as num).toDouble();
+
+        print('🔁 Actualizando ubicación usando punto_partida: ($latFinal, $lngFinal)');
+      }
+
+      final resultado = await RutasApi.actualizarUbicacion(token, rutaId, latFinal, lngFinal);
+
+      onShowMessage(
+        resultado['message'] ?? 'Ubicación actualizada correctamente',
+        isError: false,
+      );
+    } catch (e) {
+      onShowMessage(
+        'Error al actualizar ubicación: ${e.toString()}',
+        isError: true,
+      );
+    }
+  }
+
+  /// Finaliza la transmisión de la ruta
+  /// Envía las coordenadas del punto final al servidor
+  Future<void> finalizarTransmision() async {
+    try {
+      if (rutaId.isEmpty) {
+        throw Exception('No hay ID de ruta disponible');
+      }
+
+      // Usar las coordenadas del punto_final de la ruta
+      final puntoFinal = _rutaData?['punto_final'];
+      if (puntoFinal == null) {
+        throw Exception('No se encontró punto final de la ruta');
+      }
+
+      final lat = (puntoFinal['_latitude'] as num).toDouble();
+      final lng = (puntoFinal['_longitude'] as num).toDouble();
+
+      print('📍 Coordenadas del punto final: ($lat, $lng)');
+
+      // Construir el cuerpo de la petición
+      final requestBody = {
+        'ubicacion_actual': {
+          'lat': lat,
+          'lng': lng,
+        }
+      };
+
+      print('📦 Request body: ${jsonEncode(requestBody)}');
+
+      // Obtener token
+      final token = await _storage.read(key: 'auth_token');
+      if (token == null) {
+        throw Exception('No hay token de autenticación');
+      }
+
+      print('🔐 Token obtenido: ${token.substring(0, 20)}...');
+      print('🌐 Enviando petición a: https://server-location-1r1p.onrender.com/api/rutas/$rutaId/finalizar');
+
+      // Hacer la petición PUT
+      final response = await http.put(
+        Uri.parse('https://server-location-1r1p.onrender.com/api/rutas/$rutaId/finalizar'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      print('📡 Response status: ${response.statusCode}');
+      print('📡 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        
+        // Actualizar estado local
+        _rutaData?['estado'] = 'finalizada';
+        notifyListeners();
+        
+        onShowMessage(
+          responseData['message'] ?? 'Transmisión finalizada exitosamente',
+          isError: false,
+        );
+        
+        print('✅ Transmisión finalizada exitosamente');
+      } else if (response.statusCode == 404) {
+        throw Exception('La ruta no fue encontrada en el servidor');
+      } else if (response.statusCode == 400) {
+        throw Exception('La ruta ya está finalizada o no puede ser finalizada');
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['message'] ?? 'Error al finalizar transmisión');
+      }
+    } catch (e) {
+      print('❌ Error en finalizarTransmision: ${e.toString()}');
+      onShowMessage('Error: ${e.toString()}', isError: true);
+      rethrow;
+    }
+  }
+
+  /// Método para obtener el estado actual de la ruta desde el servidor
+  Future<void> refreshRutaStatus() async {
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token == null) throw Exception('No hay token de autenticación');
+
+      final response = await http.get(
+        Uri.parse('https://server-location-1r1p.onrender.com/api/rutas/$rutaId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          _rutaData = data['data'];
+          notifyListeners();
+          print('🔄 Estado de la ruta actualizado: ${_rutaData?['estado']}');
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error al refrescar estado: $e');
+    }
+  }
+
+  /// Obtiene la última ubicación registrada del camión desde el servidor
+  /// y agrega un marcador en el mapa con el icono de camión
+  Future<void> obtenerUltimaUbicacion() async {
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token == null) {
+        throw Exception('No se encontró el token de autenticación.');
+      }
+
+      print('════════════════════════════════════');
+      print('📍 Obteniendo última ubicación del camión...');
+      print('════════════════════════════════════');
+
+      final resultado = await RutasApi.obtenerUltimaUbicacion(token, rutaId);
+
+      // El backend puede devolver la ubicación bajo diferentes claves.
+      // Aceptamos tanto `ubicacion_actual` como `ubicacion`.
+      Map<String, dynamic>? ubicacion;
+      if (resultado.containsKey('ubicacion_actual')) {
+        ubicacion = (resultado['ubicacion_actual'] as Map).cast<String, dynamic>();
+      } else if (resultado.containsKey('ubicacion')) {
+        ubicacion = (resultado['ubicacion'] as Map).cast<String, dynamic>();
+      }
+
+      if (ubicacion != null && ubicacion.containsKey('lat') && ubicacion.containsKey('lng')) {
+        final lat = (ubicacion['lat'] as num).toDouble();
+        final lng = (ubicacion['lng'] as num).toDouble();
+
+        print('📍 Ubicación obtenida - Lat: $lat, Lng: $lng');
+
+        // Crear o actualizar marcador del camión con icono personalizado
+        _markers.removeWhere((m) => m.key == const ValueKey('truck_marker'));
+
+        final marker = Marker(
+          key: const ValueKey('truck_marker'),
+          point: LatLng(lat, lng),
+          width: 100,
+          height: 120,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Círculo de fondo
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.blue.shade700,
+                    width: 2,
+                  ),
+                ),
+              ),
+              // Círculo interior con icono
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade700,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.blue.withOpacity(0.5),
+                      spreadRadius: 3,
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.local_shipping,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+            ],
+          ),
+        );
+
+        _markers.add(marker);
+
+        print('✅ Marcador del camión agregado al mapa');
+        print('   📍 Posición: ($lat, $lng)');
+        print('   📊 Total marcadores en el mapa: ${_markers.length}');
+
+        notifyListeners();
+      } else {
+        print('⚠️ No se encontró ubicación (lat/lng) en la respuesta del servidor');
+        // Mostrar contenido completo para debugging si viene en otra estructura
+        print('Respuesta completa: $resultado');
+      }
+    } catch (e) {
+      print('❌ Error al obtener última ubicación: ${e.toString()}');
+      onShowMessage(
+        'Error al obtener ubicación del camión: ${e.toString()}',
+        isError: true,
+      );
+    }
   }
 
   @override

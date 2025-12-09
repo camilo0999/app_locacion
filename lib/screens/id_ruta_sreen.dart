@@ -5,10 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-// NUEVAS IMPORTACIONES
-import 'package:flutter_map/flutter_map.dart'; 
+import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-// FIN NUEVAS IMPORTACIONES
 
 import '../states/ruta_map_state.dart';
 
@@ -24,6 +22,10 @@ class IdRutaScreen extends StatefulWidget {
 class _IdRutaScreenState extends State<IdRutaScreen> {
   final _storage = const FlutterSecureStorage();
   late final RutaMapState _rutaMapState;
+  String? _userRole;
+  Map<String, dynamic>? _calleSeleccionada;
+  int? _calleSeleccionadaIndex;
+  bool _mapaCargado = false; // Nueva variable para controlar estado del mapa
 
   @override
   void initState() {
@@ -43,7 +45,26 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
       },
     );
     _rutaMapState.loadRutaDetails();
+    _loadUserRole();
   }
+
+  Future<void> _loadUserRole() async {
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        final role = await _storage.read(key: 'user_role');
+        print('DEBUG: Rol leído desde storage: $role');
+
+        setState(() {
+          _userRole = role;
+        });
+      }
+    } catch (e) {
+      print('Error al cargar el rol del usuario: $e');
+    }
+  }
+
+  bool get _isConductor => _userRole == 'conductor';
 
   @override
   void dispose() {
@@ -107,6 +128,23 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
         ),
         body: Consumer<RutaMapState>(
           builder: (context, state, child) {
+            // Verificar si el mapa se ha terminado de cargar
+            if (!state.isMapLoading && !_mapaCargado) {
+              // El mapa se terminó de cargar, ahora podemos buscar ubicación si la ruta está en curso
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() {
+                    _mapaCargado = true;
+                  });
+                  
+                  // Si la ruta está en curso, buscar ubicación automáticamente
+                  if (state.rutaData?['estado'] == 'en_curso') {
+                    _buscarUbicacionCamionAutomaticamente(state);
+                  }
+                }
+              });
+            }
+
             if (state.isLoading) {
               return Center(
                 child: Column(
@@ -155,6 +193,8 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
                 ),
               );
             }
+
+            final bool rutaEnCurso = state.rutaData?['estado'] == 'en_curso';
 
             return SingleChildScrollView(
               child: Column(
@@ -208,6 +248,50 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
                             ),
                           ),
                         ],
+                        // Estado de la ruta
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _getEstadoColor(state.rutaData!['estado']),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            _getEstadoText(state.rutaData!['estado']),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        // Indicador de si se puede obtener ubicación
+                        if (!rutaEnCurso) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline_rounded,
+                                color: Colors.orange[700],
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  'La ubicación del camión solo está disponible cuando la ruta está en curso',
+                                  style: TextStyle(
+                                    color: Colors.orange[700],
+                                    fontSize: 13,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -216,33 +300,28 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
                     margin: const EdgeInsets.all(16.0),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
-                     
                     ),
                     child: Stack(
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(20),
                           child: FlutterMap(
-                            // Usamos el controlador del State
-                            mapController: state.mapController, 
+                            mapController: state.mapController,
                             options: MapOptions(
-                              // Usamos el LatLng de latlong2
                               initialCenter: state.initialPosition,
                               initialZoom: state.isMapLoading ? 10.0 : 14.0,
                             ),
                             children: [
-                              // 1. Capa de Tiles (OpenStreetMap) - El mapa base
                               TileLayer(
-                                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                userAgentPackageName: 'com.example.app_locacion', 
+                                urlTemplate:
+                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName: 'com.example.app_locacion',
                               ),
-                              // 2. Capa de Polilíneas
                               PolylineLayer(
-                                polylines: state.polylines, 
+                                polylines: state.polylines,
                               ),
-                              // 3. Capa de Marcadores
                               MarkerLayer(
-                                markers: state.markers, 
+                                markers: state.markers,
                               ),
                             ],
                           ),
@@ -294,58 +373,423 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Row(
-                                children: [
-                                  SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
+                    child: Column(
+                      children: [
+                        // Selector de Calles (para todos los usuarios)
+                        Consumer<RutaMapState>(
+                          builder: (context, state, child) {
+                            final calles = state.calles;
+                            if (calles.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey[300]!),
+                                borderRadius: BorderRadius.circular(12),
+                                color: Colors.white,
+                              ),
+                              child: DropdownButton<int>(
+                                isExpanded: true,
+                                underline: const SizedBox(),
+                                hint: Text(
+                                  'Selecciona una calle',
+                                  style: TextStyle(color: Colors.grey[600]),
+                                ),
+                                value: _calleSeleccionadaIndex,
+                                items: List.generate(calles.length, (index) {
+                                  final calle = calles[index];
+                                  return DropdownMenuItem<int>(
+                                    value: index,
+                                    child: Text(
+                                      calle['nombre'] ?? 'Calle sin nombre',
+                                      style: const TextStyle(color: Colors.black87),
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (index) {
+                                  if (index != null &&
+                                      index >= 0 &&
+                                      index < calles.length) {
+                                    final calle = calles[index];
+                                    setState(() {
+                                      _calleSeleccionadaIndex = index;
+                                      _calleSeleccionada = calle;
+                                    });
+                                    print(
+                                        'DEBUG: Calle seleccionada: ${calle['nombre']} (${calle['lat']}, ${calle['lng']})');
+                                  }
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                        // Botón para ver última ubicación del camión - SOLO si ruta en curso
+                        if (rutaEnCurso)
+                          SizedBox(
+                            width: double.infinity,
+                            height: 52,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _buscarUbicacionCamionManual(state),
+                              icon: const Icon(
+                                Icons.local_shipping_rounded,
+                                size: 26,
+                              ),
+                              label: const Text(
+                                'Ver Ubicación del Camión',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.purple[700],
+                                foregroundColor: Colors.white,
+                                elevation: 2,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          // Mensaje informativo cuando la ruta no está en curso
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            margin: const EdgeInsets.only(bottom: 16),
+                            decoration: BoxDecoration(
+                              color: Colors.orange[50],
+                              borderRadius: BorderRadius.circular(12),
+                              
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline_rounded,
+                                  color: Colors.orange[700],
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'La ubicación del camión solo está disponible cuando la ruta está en curso',
+                                    style: TextStyle(
+                                      color: Colors.orange[800],
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 16),
+                        // Botones solo para conductores
+                        if (_isConductor) ...[
+                          // Botón Iniciar Ruta - Solo visible si estado != 'en_curso' y != 'finalizada'
+                          if (state.rutaData?['estado'] != 'en_curso' &&
+                              state.rutaData?['estado'] != 'finalizada')
+                            SizedBox(
+                              width: double.infinity,
+                              height: 56,
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  try {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: const Row(
+                                          children: [
+                                            SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<Color>(
+                                                  Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                            SizedBox(width: 16),
+                                            Text('Iniciando ruta...'),
+                                          ],
+                                        ),
+                                        backgroundColor: Colors.green[700],
+                                        behavior: SnackBarBehavior.floating,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                    );
+
+                                    await state.iniciarRuta();
+                                  } catch (e) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Error: ${e.toString()}'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                },
+                                icon: const Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: 28,
+                                ),
+                                label: const Text(
+                                  'Iniciar Ruta',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green[700],
+                                  foregroundColor: Colors.white,
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          
+                          // Botón Actualizar Ubicación - Solo visible si estado == 'en_curso'
+                          if (state.rutaData?['estado'] == 'en_curso')
+                            Column(
+                              children: [
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 56,
+                                  child: ElevatedButton.icon(
+                                    onPressed: () async {
+                                      try {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: const Row(
+                                              children: [
+                                                SizedBox(
+                                                  width: 20,
+                                                  height: 20,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    valueColor:
+                                                        AlwaysStoppedAnimation<
+                                                            Color>(
+                                                      Colors.white,
+                                                    ),
+                                                  ),
+                                                ),
+                                                SizedBox(width: 16),
+                                                Text('Actualizando ubicación...'),
+                                              ],
+                                            ),
+                                            backgroundColor: Colors.blue[700],
+                                            behavior: SnackBarBehavior.floating,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            duration:
+                                                const Duration(seconds: 2),
+                                          ),
+                                        );
+
+                                        double? selLat;
+                                        double? selLng;
+                                        if (_calleSeleccionada != null) {
+                                          try {
+                                            selLat = (_calleSeleccionada!['lat']
+                                                    as num)
+                                                .toDouble();
+                                            selLng = (_calleSeleccionada!['lng']
+                                                    as num)
+                                                .toDouble();
+                                          } catch (_) {
+                                            selLat = null;
+                                            selLng = null;
+                                          }
+                                        }
+
+                                        if (selLat != null && selLng != null) {
+                                          print(
+                                              'DEBUG: Enviando coords de la calle seleccionada: ($selLat, $selLng)');
+                                          await state.iniciarTransmision(
+                                              latitude: selLat,
+                                              longitude: selLng);
+                                        } else {
+                                          print(
+                                              'DEBUG: No hay calle seleccionada, se enviará punto_partida');
+                                          await state.iniciarTransmision();
+                                        }
+                                      } catch (e) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content:
+                                                Text('Error: ${e.toString()}'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    icon: const Icon(
+                                      Icons.location_on_rounded,
+                                      size: 28,
+                                    ),
+                                    label: const Text(
+                                      'Actualizar Ubicación',
+                                      style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue[700],
+                                      foregroundColor: Colors.white,
+                                      elevation: 2,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
                                       ),
                                     ),
                                   ),
-                                  SizedBox(width: 16),
-                                  Text('Localizando camión...'),
-                                ],
-                              ),
-                              backgroundColor: Colors.teal[700],
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              duration: const Duration(seconds: 2),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
                             ),
-                          );
-                        },
-                        icon: const Icon(
-                          Icons.local_shipping_rounded,
-                          size: 28,
-                        ),
-                        label: const Text(
-                          'Ver ubicación del camión',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.teal[700],
-                          foregroundColor: Colors.white,
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                      ),
+
+                          // Botón Finalizar Transmisión - Solo visible si estado == 'en_curso'
+                          if (state.rutaData?['estado'] == 'en_curso')
+                            SizedBox(
+                              width: double.infinity,
+                              height: 56,
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  // Mostrar diálogo de confirmación
+                                  final confirmed = await showDialog<bool>(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: const Text('Finalizar Transmisión'),
+                                      content: const Text(
+                                          '¿Estás seguro de que deseas finalizar la transmisión de ubicación? Esta acción no se puede deshacer.'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(false),
+                                          child: const Text('Cancelar'),
+                                        ),
+                                        ElevatedButton(
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(true),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.red[700],
+                                            foregroundColor: Colors.white,
+                                          ),
+                                          child: const Text('Finalizar'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+
+                                  if (confirmed == true) {
+                                    try {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: const Row(
+                                            children: [
+                                              SizedBox(
+                                                width: 20,
+                                                height: 20,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  valueColor:
+                                                      AlwaysStoppedAnimation<
+                                                          Color>(
+                                                    Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                              SizedBox(width: 16),
+                                              Text('Finalizando transmisión...'),
+                                            ],
+                                          ),
+                                          backgroundColor: Colors.red[700],
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+
+                                      await state.finalizarTransmision();
+
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .clearSnackBars();
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Row(
+                                              children: [
+                                                Icon(Icons.check_circle,
+                                                    color: Colors.white),
+                                                SizedBox(width: 12),
+                                                Text(
+                                                    'Transmisión finalizada exitosamente'),
+                                              ],
+                                            ),
+                                        
+                                            behavior: SnackBarBehavior.floating,
+                                            duration: Duration(seconds: 3),
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .clearSnackBars();
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content:
+                                                Text('Error: ${e.toString()}'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  }
+                                },
+                                icon: const Icon(
+                                  Icons.stop_rounded,
+                                  size: 28,
+                                ),
+                                label: const Text(
+                                  'Finalizar Transmisión',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red[700],
+                                  foregroundColor: Colors.white,
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ],
                     ),
                   ),
                 ],
@@ -355,5 +799,108 @@ class _IdRutaScreenState extends State<IdRutaScreen> {
         ),
       ),
     );
+  }
+
+  // Método para buscar ubicación automáticamente (después de cargar el mapa)
+  Future<void> _buscarUbicacionCamionAutomaticamente(RutaMapState state) async {
+    try {
+      print('🔄 Buscando ubicación del camión automáticamente (mapa cargado)...');
+      await state.obtenerUltimaUbicacion();
+    } catch (e) {
+      print('⚠️ Error al buscar ubicación automáticamente: $e');
+      // No mostrar error al usuario en búsqueda automática
+    }
+  }
+
+  // Método para buscar ubicación manualmente (cuando el usuario presiona el botón)
+  Future<void> _buscarUbicacionCamionManual(RutaMapState state) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Colors.white,
+                  ),
+                ),
+              ),
+              SizedBox(width: 12),
+              Text('Localizando camión...'),
+            ],
+          ),
+          backgroundColor: Colors.purple[700],
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      await state.obtenerUltimaUbicacion();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Ubicación del camión cargada en el mapa'),
+              ],
+            ),
+            backgroundColor: Colors.purple[700],
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Métodos auxiliares para mostrar el estado
+  Color _getEstadoColor(String estado) {
+    switch (estado) {
+      case 'pendiente':
+        return Colors.orange;
+      case 'en_curso':
+        return Colors.green;
+      case 'finalizada':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getEstadoText(String estado) {
+    switch (estado) {
+      case 'pendiente':
+        return 'PENDIENTE';
+      case 'en_curso':
+        return 'EN CURSO';
+      case 'finalizada':
+        return 'FINALIZADA';
+      default:
+        return estado.toUpperCase();
+    }
   }
 }
